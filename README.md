@@ -16,7 +16,7 @@ A real-time inventory tracking system using YOLOv8 object detection to monitor r
 
 ## Try it at : https://retailvisiontracker-ayntxcggzsvtw2fpbkbdbq.streamlit.app/
 
-(Optimized for running on CPU-only cloud environment, still slow)
+(Optimized for running on CPU-only cloud environment)
 
 ## Setup
 1. Install the required packages:
