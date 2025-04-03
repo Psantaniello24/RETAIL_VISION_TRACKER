@@ -12,23 +12,7 @@ A real-time inventory tracking system using YOLOv8 object detection to monitor r
 
 ## Demo
 
-### Sample Video Demonstration
-To view our sample video demo `20250403-1312-43.3580260.mp4`, you can:
-
-1. Download the video from the repository
-2. View it directly in the application by selecting "Upload Video"
-
 ![Demo Video Thumbnail](https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/0.jpg)
-
-<details>
-  <summary>Click to see more demo screenshots</summary>
-  
-  ### Detection in Action
-  ![Detection Screenshot](https://via.placeholder.com/800x400?text=Detection+Screenshot)
-  
-  ### Inventory Dashboard
-  ![Dashboard Screenshot](https://via.placeholder.com/800x400?text=Dashboard+Screenshot)
-</details>
 
 ## Setup
 1. Install the required packages:
