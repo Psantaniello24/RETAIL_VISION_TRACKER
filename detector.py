@@ -13,7 +13,7 @@ try:
 except ImportError:
     print("Installing ultralytics...")
     import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "ultralytics==8.0.20"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "ultralytics>=8.3.45"])
     from ultralytics import YOLO
 
 from collections import Counter
@@ -59,51 +59,59 @@ class ObjectDetector:
             print(f"Error loading model: {e}")
             print("Attempting fallback loading methods...")
             
-            # Try alternate loading methods
-            for i in range(2):
-                try:
-                    if i == 0:
-                        # Specify task
-                        self.model = YOLO(MODEL_PATH, task='detect')
-                        break
-                    else:
-                        # Last resort - try with explicit loading
-                        from ultralytics.engine.model import Model
-                        self.model = Model(MODEL_PATH)
-                        break
-                except Exception as inner_e:
-                    print(f"Fallback attempt {i+1} failed: {inner_e}")
-                    if i == 1:  # Last attempt
-                        print("All loading attempts failed.")
-                        raise RuntimeError("Could not load YOLOv8 model after multiple attempts")
+            try:
+                # Try with task specification
+                print("Trying with task specification...")
+                self.model = YOLO(MODEL_PATH, task='detect')
+            except Exception as inner_e:
+                print(f"Task-specific loading failed: {inner_e}")
+                raise RuntimeError("Could not load YOLOv8 model after multiple attempts")
         
         self.class_names = COCO_CLASSES
         print(f"Model loaded successfully!")
         
     def detect(self, frame):
-        """Run object detection on a frame.
-        
-        Args:
-            frame: Input image/frame
-            
-        Returns:
-            processed_frame: Frame with bounding boxes
-            detections: Dictionary with counts of detected objects
-        """
+        """Run object detection on a frame."""
         # Run YOLOv8 inference
         results = self.model(frame, conf=CONFIDENCE_THRESHOLD)
         
         # Get all detected objects
         detected_classes = []
         for result in results:
-            boxes = result.boxes.cpu().numpy()
-            for box in boxes:
-                class_id = int(box.cls[0])
-                class_name = self.class_names[class_id]
-                
-                # Only count products we're tracking
-                if class_name in PRODUCTS:
-                    detected_classes.append(class_name)
+            # Check if we're using newer or older ultralytics API
+            try:
+                boxes = result.boxes.cpu().numpy()
+                for box in boxes:
+                    class_id = int(box.cls[0])
+                    class_name = self.class_names[class_id]
+                    
+                    # Only count products we're tracking
+                    if class_name in PRODUCTS:
+                        detected_classes.append(class_name)
+            except AttributeError:
+                # Newer API might have different structure
+                try:
+                    # Try newer ultralytics API format
+                    for box in result.boxes:
+                        class_id = int(box.cls[0].item())
+                        class_name = self.class_names[class_id]
+                        
+                        # Only count products we're tracking
+                        if class_name in PRODUCTS:
+                            detected_classes.append(class_name)
+                except:
+                    # Last resort: try to extract data from results in any way possible
+                    if hasattr(result, 'names') and hasattr(result, 'boxes'):
+                        for box in result.boxes:
+                            if hasattr(box, 'cls'):
+                                class_id = int(box.cls.item()) if hasattr(box.cls, 'item') else int(box.cls)
+                                if hasattr(result, 'names'):
+                                    class_name = result.names[class_id]
+                                else:
+                                    class_name = self.class_names[class_id]
+                                
+                                if class_name in PRODUCTS:
+                                    detected_classes.append(class_name)
                     
         # Count occurrences of each class
         detection_counts = dict(Counter(detected_classes))
@@ -114,51 +122,48 @@ class ObjectDetector:
         return processed_frame, detection_counts
     
     def _draw_boxes(self, frame, result):
-        """Draw bounding boxes on the frame.
-        
-        Args:
-            frame: Input image/frame
-            result: YOLOv8 result object
-            
-        Returns:
-            annotated_frame: Frame with bounding boxes
-        """
+        """Draw bounding boxes on the frame."""
         annotated_frame = frame.copy()
         
-        boxes = result.boxes.cpu().numpy()
-        for box in boxes:
-            x1, y1, x2, y2 = box.xyxy[0].astype(int)
-            class_id = int(box.cls[0])
-            class_name = self.class_names[class_id]
-            conf = box.conf[0]
+        try:
+            # Try the traditional approach first
+            boxes = result.boxes.cpu().numpy()
+            for box in boxes:
+                x1, y1, x2, y2 = box.xyxy[0].astype(int)
+                class_id = int(box.cls[0])
+                class_name = self.class_names[class_id]
+                conf = box.conf[0]
+                
+                # Only draw boxes for products we're tracking
+                if class_name in PRODUCTS:
+                    display_name = PRODUCTS[class_name]["name"]
+                    color = self._get_color(class_name)
+                    
+                    # Draw bounding box
+                    cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+                    
+                    # Draw label background
+                    text = f"{display_name}: {conf:.2f}"
+                    text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+                    cv2.rectangle(annotated_frame, (x1, y1 - text_size[1] - 5), (x1 + text_size[0], y1), color, -1)
+                    
+                    # Draw text
+                    cv2.putText(annotated_frame, text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        except (AttributeError, IndexError) as e:
+            print(f"Error in original drawing method: {e}")
             
-            # Only draw boxes for products we're tracking
-            if class_name in PRODUCTS:
-                display_name = PRODUCTS[class_name]["name"]
-                color = self._get_color(class_name)
-                
-                # Draw bounding box
-                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
-                
-                # Draw label background
-                text = f"{display_name}: {conf:.2f}"
-                text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
-                cv2.rectangle(annotated_frame, (x1, y1 - text_size[1] - 5), (x1 + text_size[0], y1), color, -1)
-                
-                # Draw text
-                cv2.putText(annotated_frame, text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            try:
+                # Fallback to using the plot method from ultralytics
+                annotated_frame = result.plot()
+            except Exception as e2:
+                print(f"Error in fallback drawing method: {e2}")
+                # Just return the original frame if both methods fail
+                pass
         
         return annotated_frame
     
     def _get_color(self, class_name):
-        """Get a consistent color for a class.
-        
-        Args:
-            class_name: Name of the class
-            
-        Returns:
-            color: BGR color tuple
-        """
+        """Get a consistent color for a class."""
         # Generate a consistent color based on the class name
         hash_value = hash(class_name) % 255
         return (hash_value, 255 - hash_value, 100) 
