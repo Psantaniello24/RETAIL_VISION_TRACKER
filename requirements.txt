@@ -1,4 +1,5 @@
 setuptools>=58.0.0
+wheel
 opencv-python-headless==4.8.0.76
 ultralytics==8.0.157
 streamlit==1.26.0
