@@ -10,9 +10,9 @@ A real-time inventory tracking system using YOLOv8 object detection to monitor r
 - Daily inventory reports
 - Support for multiple input sources (webcam, sample video, or uploaded video)
 
-## Demo
+## Video example
 
-< video src = "[https://github.com/Psantaniello24/RETAIL_VISION_TRACKER/demo.mp4 ](https://github.com/Psantaniello24/RETAIL_VISION_TRACKER/blob/main/demo.mp4)" />
+![Demo GIF](./https://github.com/Psantaniello24/RETAIL_VISION_TRACKER/blob/main/demo_retail.gif)
 
 ## Setup
 1. Install the required packages:
