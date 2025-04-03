@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import os
 import sys
+import requests
+from pathlib import Path
 
 # Install ultralytics if needed
 try:
@@ -17,43 +19,63 @@ except ImportError:
 from collections import Counter
 from config import MODEL_PATH, CONFIDENCE_THRESHOLD, COCO_CLASSES, PRODUCTS
 
+# Download YOLOv8 model if needed
+def download_model(model_path):
+    """Download YOLOv8 model if it doesn't exist"""
+    if os.path.exists(model_path):
+        return True
+        
+    print(f"Model not found at {model_path}, downloading...")
+    url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt"
+    
+    try:
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        response = requests.get(url, stream=True)
+        with open(model_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        return True
+    except Exception as e:
+        print(f"Error downloading model: {e}")
+        return False
+
 class ObjectDetector:
     def __init__(self):
         """Initialize the object detector with YOLOv8 model."""
         # Add compatibility fix for PyTorch version issues
         os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
         
-        try:
-            # Handle PyTorch 2.6+ compatibility
-            # Directly use weights_only=False which is the safest approach
-            self.model = YOLO(MODEL_PATH, task='detect')
-            
-        except Exception as e:
-            print(f"First attempt failed: {e}")
-            print("Trying alternate approach...")
-            
+        # First, ensure the model exists
+        if not os.path.exists(MODEL_PATH):
+            model_success = download_model(MODEL_PATH)
+            if not model_success:
+                raise RuntimeError(f"Could not download model to {MODEL_PATH}")
+        
+        # Try a few approaches to load the model
+        for i in range(3):  # Three attempts
             try:
-                # Patch torch.load to always use weights_only=False
-                original_torch_load = torch.load
-                
-                def patched_load(f, *args, **kwargs):
-                    kwargs['weights_only'] = False
-                    return original_torch_load(f, *args, **kwargs)
-                
-                torch.load = patched_load
-                
-                # Try loading with the patch
-                self.model = YOLO(MODEL_PATH)
-                
-                # Restore original function
-                torch.load = original_torch_load
-                
+                if i == 0:
+                    # First attempt: simple loading
+                    self.model = YOLO(MODEL_PATH)
+                    break
+                elif i == 1:
+                    # Second attempt: with task specified
+                    self.model = YOLO(MODEL_PATH, task='detect')
+                    break
+                else:
+                    # Third attempt: with weights_only=False
+                    self.model = YOLO(MODEL_PATH, 
+                                    _callbacks={'on_params_update': 
+                                                lambda: torch.load(MODEL_PATH, weights_only=False)})
+                    break
             except Exception as e:
-                print(f"Error loading model: {e}")
-                print("Loading failed. Please check model path and dependencies.")
-                raise
+                print(f"Loading attempt {i+1} failed: {e}")
+                if i == 2:  # Last attempt
+                    print("All loading attempts failed.")
+                    raise
         
         self.class_names = COCO_CLASSES
+        print(f"Model loaded successfully!")
         
     def detect(self, frame):
         """Run object detection on a frame.
