@@ -371,7 +371,7 @@ def process_video_feed(source, feed_placeholder, source_type, loop_video=False,
         tracker.update(detections)
         
         # Display the processed frame
-        feed_placeholder.image(processed_frame, channels="RGB", use_column_width=True)
+        feed_placeholder.image(processed_frame, channels="RGB", use_container_width=True)
         
         # Update progress for video files
         if source_type == "video" and total_frames > 0:
