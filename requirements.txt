@@ -7,4 +7,5 @@ numpy==1.26.0
 pandas==2.0.3
 requests==2.32.3
 tqdm==4.67.1 
+pillow==10.1.0  
 
