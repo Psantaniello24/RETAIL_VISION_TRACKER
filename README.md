@@ -14,6 +14,9 @@ A real-time inventory tracking system using YOLOv8 object detection to monitor r
 
 ![Demo GIF](./demo_retail.gif)
 
+## Try it at : 
+(Optimized for running on CPU-only cloud environment)
+
 ## Setup
 1. Install the required packages:
    ```
