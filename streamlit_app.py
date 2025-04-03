@@ -15,6 +15,7 @@ except ImportError:
 # Now import the rest of the modules
 import cv2
 import time
+import torch
 import streamlit as st
 import numpy as np
 import pandas as pd
