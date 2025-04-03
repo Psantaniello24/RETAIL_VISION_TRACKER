@@ -7,14 +7,29 @@ import sys
 import requests
 from pathlib import Path
 
+# Set environment variables for compatibility
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["PYTHONUNBUFFERED"] = "1"
+
 # Install ultralytics if needed
 try:
     from ultralytics import YOLO
 except ImportError:
     print("Installing ultralytics...")
     import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "ultralytics==8.0.20"])
-    from ultralytics import YOLO
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "ultralytics==8.0.20", "--no-cache-dir"])
+        from ultralytics import YOLO
+    except Exception as e:
+        print(f"Failed to install ultralytics: {e}")
+        print("Trying alternative installation method...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "ultralytics==8.0.20", "--no-cache-dir", "--force-reinstall"])
+            from ultralytics import YOLO
+        except Exception as e2:
+            print(f"All installation attempts failed: {e2}")
+            sys.exit(1)
 
 from collections import Counter
 from config import MODEL_PATH, CONFIDENCE_THRESHOLD, COCO_CLASSES, PRODUCTS
@@ -34,6 +49,7 @@ def download_model(model_path):
         with open(model_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
+        print(f"Model downloaded successfully to {model_path}")
         return True
     except Exception as e:
         print(f"Error downloading model: {e}")
@@ -42,29 +58,38 @@ def download_model(model_path):
 class ObjectDetector:
     def __init__(self):
         """Initialize the object detector with YOLOv8 model."""
-        # Add compatibility fix for PyTorch version issues
-        os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+        print("Initializing ObjectDetector...")
         
         # First, ensure the model exists
         if not os.path.exists(MODEL_PATH):
             model_success = download_model(MODEL_PATH)
             if not model_success:
                 raise RuntimeError(f"Could not download model to {MODEL_PATH}")
+        else:
+            print(f"Using existing model at {MODEL_PATH}")
         
         # Try a few approaches to load the model
         for i in range(3):  # Three attempts
             try:
                 if i == 0:
                     # First attempt: simple loading
+                    print("Loading model - attempt 1: simple loading")
                     self.model = YOLO(MODEL_PATH)
                     break
                 elif i == 1:
                     # Second attempt: with task specified
+                    print("Loading model - attempt 2: with task specified")
                     self.model = YOLO(MODEL_PATH, task='detect')
                     break
                 else:
                     # Third attempt: with weights_only=False
-                    self.model = YOLO(MODEL_PATH, 
+                    print("Loading model - attempt 3: with custom loading strategy")
+                    # For newer PyTorch versions, we might need a different approach
+                    if hasattr(torch, '__version__') and torch.__version__.startswith('2.'):
+                        print(f"Using PyTorch {torch.__version__} loading strategy")
+                        self.model = YOLO(MODEL_PATH)
+                    else:
+                        self.model = YOLO(MODEL_PATH, 
                                     _callbacks={'on_params_update': 
                                                 lambda: torch.load(MODEL_PATH, weights_only=False)})
                     break
@@ -75,7 +100,7 @@ class ObjectDetector:
                     raise
         
         self.class_names = COCO_CLASSES
-        print(f"Model loaded successfully!")
+        print(f"Model loaded successfully! PyTorch version: {torch.__version__}")
         
     def detect(self, frame):
         """Run object detection on a frame.

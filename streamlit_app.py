@@ -1,9 +1,15 @@
 import sys
 import subprocess
+import traceback
+
+# Configure startup behavior for better logging
+print("Starting Retail Inventory Tracking System...")
+print(f"Python version: {sys.version}")
 
 # Try to ensure distutils compatibility
 try:
     import distutils
+    print("Distutils is available")
 except ImportError:
     print("Attempting to install distutils compatibility...")
     try:
@@ -13,22 +19,39 @@ except ImportError:
             "setuptools>=59.0.0",
             "--force-reinstall"
         ])
+        print("Setuptools installed successfully")
     except Exception as e:
         print(f"Warning: Failed to install distutils: {e}")
+        traceback.print_exc()
 
 # Now import the rest of the modules
-import cv2
-import time
-import streamlit as st
-import numpy as np
-import pandas as pd
-import os
-import requests
-from io import BytesIO
-from datetime import datetime
-from detector import ObjectDetector
-from inventory import InventoryTracker
-from config import CAMERA_ID, FRAME_WIDTH, FRAME_HEIGHT, PRODUCTS, REPORT_FREQUENCY, VIDEO_PATH
+try:
+    import cv2
+    import time
+    import streamlit as st
+    import numpy as np
+    import pandas as pd
+    import os
+    import requests
+    from io import BytesIO
+    from datetime import datetime
+    print("Basic imports successful")
+except ImportError as e:
+    print(f"Error importing basic modules: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+# Import our application modules
+try:
+    print("Importing application modules...")
+    from detector import ObjectDetector
+    from inventory import InventoryTracker
+    from config import CAMERA_ID, FRAME_WIDTH, FRAME_HEIGHT, PRODUCTS, REPORT_FREQUENCY, VIDEO_PATH
+    print("Application modules imported successfully")
+except ImportError as e:
+    print(f"Error importing application modules: {e}")
+    traceback.print_exc()
+    sys.exit(1)
 
 # Setup page config
 st.set_page_config(
@@ -37,14 +60,40 @@ st.set_page_config(
     layout="wide"
 )
 
+# Print PyTorch info if available
+try:
+    import torch
+    print(f"PyTorch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+except ImportError:
+    print("PyTorch not imported")
+
 # Initialize detector and tracker
 @st.cache_resource
 def get_detector():
-    return ObjectDetector()
+    try:
+        print("Initializing detector...")
+        detector = ObjectDetector()
+        print("Detector initialized successfully")
+        return detector
+    except Exception as e:
+        print(f"Error initializing detector: {e}")
+        traceback.print_exc()
+        st.error(f"Error initializing object detector: {str(e)}")
+        return None
 
 @st.cache_resource
 def get_tracker():
-    return InventoryTracker()
+    try:
+        print("Initializing inventory tracker...")
+        tracker = InventoryTracker()
+        print("Inventory tracker initialized successfully")
+        return tracker
+    except Exception as e:
+        print(f"Error initializing tracker: {e}")
+        traceback.print_exc()
+        st.error(f"Error initializing inventory tracker: {str(e)}")
+        return None
 
 # Sample videos available for cloud deployment
 SAMPLE_VIDEOS = {
@@ -70,10 +119,14 @@ SAMPLE_VIDEOS = {
 @st.cache_data
 def download_video(video_url):
     try:
+        print(f"Downloading video from {video_url}")
         response = requests.get(video_url)
         response.raise_for_status()  # Raise an exception for HTTP errors
+        print("Video downloaded successfully")
         return BytesIO(response.content)
     except Exception as e:
+        print(f"Error downloading video: {e}")
+        traceback.print_exc()
         st.error(f"Error downloading video: {e}")
         return None
 
@@ -82,13 +135,36 @@ last_report_time = datetime.now()
 
 # Create required directories
 for directory in ["reports", "temp_videos"]:
-    os.makedirs(directory, exist_ok=True)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        print(f"Directory created/verified: {directory}")
+    except Exception as e:
+        print(f"Error creating directory {directory}: {e}")
+        traceback.print_exc()
+        st.warning(f"Could not create {directory} directory: {e}")
 
 # UI Components
 def main():
     # Title
     st.title("📦 Retail Inventory Tracking System")
     st.markdown("Using YOLOv8 to detect and track retail inventory")
+    
+    # Load the model and tracker
+    try:
+        print("Loading detector and tracker...")
+        detector = get_detector()
+        tracker = get_tracker()
+        
+        if not detector or not tracker:
+            st.error("Failed to initialize detector or tracker. Please check the logs.")
+            st.info("Ensure that all dependencies are correctly installed. You may need to refresh the page.")
+            st.stop()
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        st.info("Try refreshing the page if the model fails to load.")
+        print(f"Error initializing components: {e}")
+        traceback.print_exc()
+        st.stop()
     
     # Sidebar controls
     with st.sidebar:
@@ -124,10 +200,16 @@ def main():
                 if video_data:
                     # Save to temp file
                     video_path = os.path.join("temp_videos", f"{selected_sample}.mp4")
-                    with open(video_path, "wb") as f:
-                        f.write(video_data.getvalue())
-                    video_source = video_path
-                    st.success("Sample video loaded successfully")
+                    try:
+                        with open(video_path, "wb") as f:
+                            f.write(video_data.getvalue())
+                        video_source = video_path
+                        st.success("Sample video loaded successfully")
+                    except Exception as e:
+                        st.error(f"Error saving video: {e}")
+                        print(f"Error saving video: {e}")
+                        traceback.print_exc()
+                        video_source = None
                 else:
                     video_source = None
                     st.error("Failed to load sample video")
@@ -144,12 +226,18 @@ def main():
                 os.makedirs("temp_videos", exist_ok=True)
                 
                 # Save the file
-                video_path = os.path.join("temp_videos", uploaded_file.name)
-                with open(video_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                
-                video_source = video_path
-                st.success(f"Video uploaded successfully: {uploaded_file.name}")
+                try:
+                    video_path = os.path.join("temp_videos", uploaded_file.name)
+                    with open(video_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    
+                    video_source = video_path
+                    st.success(f"Video uploaded successfully: {uploaded_file.name}")
+                except Exception as e:
+                    st.error(f"Error saving uploaded video: {e}")
+                    print(f"Error saving uploaded video: {e}")
+                    traceback.print_exc()
+                    video_source = None
                 loop_video = st.checkbox("Loop video", value=True)
             else:
                 video_source = None
@@ -158,11 +246,16 @@ def main():
         # Manual report generation
         st.divider()
         if st.button("Generate Inventory Report"):
-            report_path = tracker.save_report()
-            if report_path:
-                st.success(f"Report saved to {report_path}")
-            else:
-                st.warning("No data available to generate report")
+            try:
+                report_path = tracker.save_report()
+                if report_path:
+                    st.success(f"Report saved to {report_path}")
+                else:
+                    st.warning("No data available to generate report")
+            except Exception as e:
+                st.error(f"Error generating report: {e}")
+                print(f"Error generating report: {e}")
+                traceback.print_exc()
         
         st.divider()
         
@@ -180,15 +273,6 @@ def main():
         # GitHub link
         st.divider()
         st.markdown("[GitHub Repository](https://github.com/YOUR_USERNAME/retail-inventory-tracker)")
-    
-    # Load the model and tracker
-    try:
-        detector = get_detector()
-        tracker = get_tracker()
-    except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
-        st.info("Try refreshing the page if the model fails to load.")
-        return
     
     # Main content
     col1, col2 = st.columns([2, 1])
@@ -363,4 +447,9 @@ def update_inventory_display(inventory_placeholder, alerts_placeholder, tracker)
             alerts_placeholder.info("No alerts at the moment")
 
 if __name__ == "__main__":
-    main() 
+    try:
+        main()
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
+        print(f"Application error: {e}")
+        traceback.print_exc() 
