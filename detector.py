@@ -2,55 +2,56 @@ import cv2
 import numpy as np
 import torch
 import torch.nn as nn
-from ultralytics import YOLO
+import os
+import sys
+
+# Install ultralytics if needed
+try:
+    from ultralytics import YOLO
+except ImportError:
+    print("Installing ultralytics...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "ultralytics==8.0.20"])
+    from ultralytics import YOLO
+
 from collections import Counter
 from config import MODEL_PATH, CONFIDENCE_THRESHOLD, COCO_CLASSES, PRODUCTS
 
 class ObjectDetector:
     def __init__(self):
         """Initialize the object detector with YOLOv8 model."""
+        # Add compatibility fix for PyTorch version issues
+        os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+        
         try:
-            # For PyTorch 2.6+ compatibility: patch torch.load to use weights_only=False
-            original_torch_load = torch.load
-            
-            def patched_load(f, *args, **kwargs):
-                kwargs['weights_only'] = False
-                return original_torch_load(f, *args, **kwargs)
-            
-            # Apply the patch
-            torch.load = patched_load
-            
-            # Load the model with patched torch.load
-            self.model = YOLO(MODEL_PATH)
-            
-            # Restore original torch.load
-            torch.load = original_torch_load
+            # Handle PyTorch 2.6+ compatibility
+            # Directly use weights_only=False which is the safest approach
+            self.model = YOLO(MODEL_PATH, task='detect')
             
         except Exception as e:
-            # If the first method fails, try an alternate method
-            print(f"First method failed: {e}")
-            print("Attempting alternate method...")
-            
-            # Define a simple class that just passes through the torch.load call with weights_only=False
-            class SafeLoader:
-                @staticmethod
-                def load(path, *args, **kwargs):
-                    return torch.load(path, weights_only=False)
-            
-            # Patch YOLO to use our SafeLoader
-            import ultralytics.nn.tasks
-            original_load = ultralytics.nn.tasks.torch_safe_load
-            
-            def my_safe_load(file):
-                return torch.load(file, map_location='cpu', weights_only=False), file
-            
-            ultralytics.nn.tasks.torch_safe_load = my_safe_load
+            print(f"First attempt failed: {e}")
+            print("Trying alternate approach...")
             
             try:
+                # Patch torch.load to always use weights_only=False
+                original_torch_load = torch.load
+                
+                def patched_load(f, *args, **kwargs):
+                    kwargs['weights_only'] = False
+                    return original_torch_load(f, *args, **kwargs)
+                
+                torch.load = patched_load
+                
+                # Try loading with the patch
                 self.model = YOLO(MODEL_PATH)
-            finally:
+                
                 # Restore original function
-                ultralytics.nn.tasks.torch_safe_load = original_load
+                torch.load = original_torch_load
+                
+            except Exception as e:
+                print(f"Error loading model: {e}")
+                print("Loading failed. Please check model path and dependencies.")
+                raise
         
         self.class_names = COCO_CLASSES
         

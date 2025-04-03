@@ -3,4 +3,9 @@ libglib2.0-0
 libsm6
 libxrender1
 libxext6
-ffmpeg 
+ffmpeg
+gcc
+g++
+build-essential
+python3-dev
+python3-setuptools 

@@ -1,3 +1,22 @@
+import sys
+import subprocess
+
+# Try to ensure distutils compatibility
+try:
+    import distutils
+except ImportError:
+    print("Attempting to install distutils compatibility...")
+    try:
+        subprocess.check_call([
+            sys.executable,
+            "-m", "pip", "install", 
+            "setuptools>=59.0.0",
+            "--force-reinstall"
+        ])
+    except Exception as e:
+        print(f"Warning: Failed to install distutils: {e}")
+
+# Now import the rest of the modules
 import cv2
 import time
 import streamlit as st

@@ -1,0 +1,1 @@
+web: python -m pip install -U pip setuptools && python distutils_placeholder.py && streamlit run streamlit_app.py 
