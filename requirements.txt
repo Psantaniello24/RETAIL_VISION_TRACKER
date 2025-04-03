@@ -1,11 +1,11 @@
-setuptools>=68.0.0
-wheel
+setuptools==69.0.2 
 opencv-python-headless==4.8.0.76
 ultralytics==8.0.157
 streamlit==1.26.0
-numpy==1.26.0
+numpy==1.24.3
 pandas==2.0.3
 requests==2.32.3
-tqdm==4.67.1 
-pillow==9.5.0
-
+tqdm==4.67.1
+Pillow==9.5.0
+torch==2.0.1
+torchvision==0.15.2
