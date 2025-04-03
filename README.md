@@ -12,7 +12,7 @@ A real-time inventory tracking system using YOLOv8 object detection to monitor r
 
 ## Demo
 
-![Demo Video Thumbnail](https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/0.jpg)
+![Demo Video Thumbnail](https://github.com/Psantaniello24/RETAIL_VISION_TRACKER/blob/main/demo.mp4)
 
 ## Setup
 1. Install the required packages:
