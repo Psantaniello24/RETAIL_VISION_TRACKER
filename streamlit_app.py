@@ -24,7 +24,11 @@ from io import BytesIO
 from datetime import datetime
 from detector import ObjectDetector
 from inventory import InventoryTracker
-from config import CAMERA_ID, FRAME_WIDTH, FRAME_HEIGHT, PRODUCTS, REPORT_FREQUENCY, VIDEO_PATH
+from config import (
+    CAMERA_ID, FRAME_WIDTH, FRAME_HEIGHT, PRODUCTS, 
+    REPORT_FREQUENCY, VIDEO_PATH, CPU_OPTIMIZED,
+    CPU_SKIP_FRAMES, GPU_SKIP_FRAMES
+)
 
 # Setup page config
 st.set_page_config(
@@ -338,13 +342,58 @@ def process_video_feed(source, feed_placeholder, source_type, loop_video=False,
         st.error(f"Error: Could not open video source {source}")
         return
     
-    # Create progress bar
+    # Create progress bar and control panel
+    st.subheader("Processing Controls")
+    col1, col2 = st.columns(2)
+    with col1:
+        stop_button = st.button("Stop Processing", use_container_width=True)
+    with col2:
+        # Add resolution scaling to reduce processing load
+        processing_quality = st.select_slider(
+            "Processing Quality",
+            options=["Low (Faster)", "Medium", "High (Slower)"],
+            value="Medium"
+        )
     progress_bar = st.progress(0)
-    stop_button = st.button("Stop Processing")
+    
+    # Check if we're running on CPU and should use optimizations
+    using_cpu = not hasattr(torch, 'cuda') or not torch.cuda.is_available()
+    
+    # Determine frame processing settings based on quality and device
+    frame_quality_map = {
+        "Low (Faster)": {"scale": 0.5, "skip_frames": 3 if using_cpu else 1},
+        "Medium": {"scale": 0.75, "skip_frames": 2 if using_cpu else 0},
+        "High (Slower)": {"scale": 1.0, "skip_frames": 1 if using_cpu else 0}
+    }
+    
+    # Apply CPU optimization if enabled
+    if using_cpu and CPU_OPTIMIZED:
+        # Override with CPU optimization settings
+        frame_quality_map = {
+            "Low (Faster)": {"scale": 0.4, "skip_frames": CPU_SKIP_FRAMES + 2},
+            "Medium": {"scale": 0.6, "skip_frames": CPU_SKIP_FRAMES},
+            "High (Slower)": {"scale": 0.8, "skip_frames": max(0, CPU_SKIP_FRAMES - 1)}
+        }
+        st.warning("⚠️ Running in CPU-optimized mode - performance may be reduced")
+    elif using_cpu:
+        st.warning("⚠️ Running on CPU - processing may be slow")
+    
+    scale_factor = frame_quality_map[processing_quality]["scale"]
+    skip_frames = frame_quality_map[processing_quality]["skip_frames"]
+    
+    device_info = "CPU" if using_cpu else "GPU"
+    st.info(f"Processing on {device_info} at {int(scale_factor*100)}% resolution, skipping {skip_frames} frames between detections")
     
     # Get total frames for video (not applicable for webcam)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) if source_type == "video" else 0
     frame_count = 0
+    frames_since_detection = 0
+    last_processed_frame = None
+    
+    # Add time tracking
+    start_time = time.time()
+    frames_processed = 0
+    detection_times = []
     
     # Process frames
     while not stop_button:
@@ -364,11 +413,58 @@ def process_video_feed(source, feed_placeholder, source_type, loop_video=False,
         # Convert BGR to RGB for display
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        # Run detection
-        processed_frame, detections = detector.detect(frame_rgb)
-        
-        # Update inventory
-        tracker.update(detections)
+        # Only perform detection on some frames to improve performance
+        if frames_since_detection >= skip_frames:
+            # Resize frame for faster processing if needed
+            detection_start = time.time()
+            
+            if scale_factor < 1.0:
+                h, w = frame_rgb.shape[:2]
+                new_h, new_w = int(h * scale_factor), int(w * scale_factor)
+                small_frame = cv2.resize(frame_rgb, (new_w, new_h))
+                
+                # Run detection on smaller frame
+                processed_small_frame, detections = detector.detect(small_frame)
+                
+                # Resize processed frame back to original size for display
+                processed_frame = cv2.resize(processed_small_frame, (w, h))
+            else:
+                # Run detection at full resolution
+                processed_frame, detections = detector.detect(frame_rgb)
+            
+            detection_time = time.time() - detection_start
+            detection_times.append(detection_time)
+            
+            # Update inventory
+            tracker.update(detections)
+            
+            # Reset counter
+            frames_since_detection = 0
+            last_processed_frame = processed_frame
+            frames_processed += 1
+            
+            # Show FPS stats every 10 frames
+            if frames_processed % 10 == 0 and detection_times:
+                avg_detection_time = sum(detection_times) / len(detection_times)
+                fps = 1.0 / avg_detection_time if avg_detection_time > 0 else 0
+                fps_text = f"Processing speed: {fps:.1f} FPS (avg {avg_detection_time*1000:.0f}ms/frame)"
+                
+                # Add FPS info to the frame
+                cv2.putText(
+                    processed_frame, fps_text, (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
+                )
+                
+                # Keep only the last 30 measurements
+                detection_times = detection_times[-30:]
+        else:
+            # Skip detection but still display the frame
+            frames_since_detection += 1
+            if last_processed_frame is not None:
+                # Use the last processed frame to show boxes
+                processed_frame = last_processed_frame
+            else:
+                processed_frame = frame_rgb
         
         # Display the processed frame
         feed_placeholder.image(processed_frame, channels="RGB", use_container_width=True)
@@ -379,8 +475,9 @@ def process_video_feed(source, feed_placeholder, source_type, loop_video=False,
             progress = min(frame_count / total_frames, 1.0)
             progress_bar.progress(progress)
         
-        # Update inventory display
-        update_inventory_display(inventory_placeholder, alerts_placeholder, tracker)
+        # Update inventory display (less frequently to reduce UI updates)
+        if frame_count % 10 == 0 or frames_since_detection == 0:
+            update_inventory_display(inventory_placeholder, alerts_placeholder, tracker)
         
         # Check if we need to save a report
         now = datetime.now()
@@ -391,12 +488,24 @@ def process_video_feed(source, feed_placeholder, source_type, loop_video=False,
             tracker.save_report()
             last_report_time = now
             
-        # Add a small delay to control frame rate and not overwhelm the CPU
-        time.sleep(delay)
+        # Adaptive delay based on device and processing time
+        # On CPU, use longer delay to prevent UI freezing
+        if using_cpu and CPU_OPTIMIZED:
+            # More aggressive delay for CPU to prevent overwhelming
+            time.sleep(delay * 2.0) 
+        else:
+            # Standard delay
+            time.sleep(delay * 1.5)
         
         # Check if stop button was clicked
         if stop_button:
             break
+    
+    # Final stats
+    total_time = time.time() - start_time
+    if frames_processed > 0 and total_time > 0:
+        avg_fps = frames_processed / total_time
+        st.success(f"Processed {frames_processed} frames in {total_time:.1f}s ({avg_fps:.1f} FPS)")
     
     # Release resources
     cap.release()

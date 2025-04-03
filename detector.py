@@ -18,7 +18,10 @@ except ImportError:
     from ultralytics import YOLO
 
 from collections import Counter
-from config import MODEL_PATH, CONFIDENCE_THRESHOLD, COCO_CLASSES, PRODUCTS
+from config import (
+    MODEL_PATH, CONFIDENCE_THRESHOLD, COCO_CLASSES, PRODUCTS,
+    CPU_OPTIMIZED, CPU_IMGSZ, GPU_IMGSZ
+)
 
 # Download YOLOv8 model if needed
 def download_model(model_path):
@@ -106,6 +109,23 @@ class ObjectDetector:
         # Add compatibility fix for PyTorch version issues
         os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
         
+        # Check if CUDA is available
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f"Using device: {self.device}")
+        
+        # Set image size based on device and optimization settings
+        if self.device == 'cpu' and CPU_OPTIMIZED:
+            self.default_imgsz = CPU_IMGSZ  # Smaller size for CPU
+            print(f"CPU optimization active - using smaller image size: {self.default_imgsz}")
+        else:
+            self.default_imgsz = GPU_IMGSZ  # Default size
+            print(f"Using standard image size: {self.default_imgsz}")
+        
+        # Add threading optimization for CPU
+        if self.device == 'cpu' and CPU_OPTIMIZED:
+            torch.set_num_threads(max(1, torch.get_num_threads() - 1))
+            print(f"Set PyTorch threads to {torch.get_num_threads()} for CPU optimization")
+        
         # First, ensure the model exists
         if not os.path.exists(MODEL_PATH):
             model_success = download_model(MODEL_PATH)
@@ -122,8 +142,16 @@ class ObjectDetector:
         
         # Modern PyTorch-compatible loading approach
         try:
-            print("Loading YOLO model with modern PyTorch...")
+            print(f"Loading YOLO model with {self.device}...")
+            # Specify device and image size for optimal performance
             self.model = YOLO(MODEL_PATH)
+            
+            # Perform a warmup inference to initialize the model
+            print("Running model warmup...")
+            dummy_img = np.zeros((self.default_imgsz, self.default_imgsz, 3), dtype=np.uint8)
+            self.model(dummy_img, conf=CONFIDENCE_THRESHOLD, verbose=False)
+            print("Model warmup completed")
+            
         except Exception as e:
             print(f"Error loading model: {e}")
             print("Attempting fallback loading methods...")
@@ -147,10 +175,19 @@ class ObjectDetector:
         self.class_names = COCO_CLASSES
         print(f"Model loaded successfully!")
         
-    def detect(self, frame):
+    def detect(self, frame, imgsz=None):
         """Run object detection on a frame."""
-        # Run YOLOv8 inference
-        results = self.model(frame, conf=CONFIDENCE_THRESHOLD)
+        start_time = time.time()
+        
+        # Use specified image size or default
+        imgsz = imgsz or self.default_imgsz
+        
+        # Run YOLOv8 inference with specified size
+        try:
+            results = self.model(frame, conf=CONFIDENCE_THRESHOLD, imgsz=imgsz, verbose=False)
+        except:
+            # Fallback without imgsz parameter if it fails
+            results = self.model(frame, conf=CONFIDENCE_THRESHOLD, verbose=False)
         
         # Get all detected objects
         detected_classes = []
@@ -195,6 +232,12 @@ class ObjectDetector:
         
         # Process frame and draw boxes
         processed_frame = self._draw_boxes(frame, results[0])
+        
+        # Log performance if in CPU mode
+        if self.device == 'cpu' and CPU_OPTIMIZED:
+            inference_time = time.time() - start_time
+            if inference_time > 0.1:  # Only log slower operations
+                print(f"Detection took {inference_time:.2f}s on CPU at size {imgsz}")
         
         return processed_frame, detection_counts
     

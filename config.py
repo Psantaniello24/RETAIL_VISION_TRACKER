@@ -10,6 +10,18 @@ FRAME_HEIGHT = 480
 # Video File Configuration
 VIDEO_PATH = "demo_video.mp4"  # Default demo video file path
 
+# Performance Configuration
+# Set to True to enable CPU optimizations
+CPU_OPTIMIZED = True
+# Default CPU image size (smaller = faster)
+CPU_IMGSZ = 320
+# Default GPU image size
+GPU_IMGSZ = 640
+# Default skip frames for CPU (higher = faster but less accuracy)
+CPU_SKIP_FRAMES = 2
+# Default skip frames for GPU
+GPU_SKIP_FRAMES = 0
+
 # Inventory Configuration
 PRODUCTS = {
     "person": {"name": "Customer", "threshold": 2, "alert": True}, 
