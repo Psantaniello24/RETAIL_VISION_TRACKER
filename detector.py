@@ -6,6 +6,7 @@ import os
 import sys
 import requests
 from pathlib import Path
+import time
 
 # Install ultralytics if needed
 try:
@@ -23,21 +24,81 @@ from config import MODEL_PATH, CONFIDENCE_THRESHOLD, COCO_CLASSES, PRODUCTS
 def download_model(model_path):
     """Download YOLOv8 model if it doesn't exist"""
     if os.path.exists(model_path):
+        print(f"Model already exists at {model_path}")
         return True
         
     print(f"Model not found at {model_path}, downloading...")
-    url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt"
     
+    # Multiple fallback URLs to try in order
+    urls = [
+        "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt",
+        "https://github.com/ultralytics/ultralytics/releases/download/v8.0.0/yolov8n.pt",
+        "https://huggingface.co/ultralytics/yolov8n/resolve/main/yolov8n.pt"
+    ]
+    
+    # Create directories if needed
+    model_dir = os.path.dirname(model_path)
+    if model_dir and not os.path.exists(model_dir):
+        os.makedirs(model_dir, exist_ok=True)
+        print(f"Created directory: {model_dir}")
+    
+    # Try each URL until one works
+    for i, url in enumerate(urls):
+        print(f"Download attempt {i+1}/{len(urls)} from: {url}")
+        try:
+            # Set a reasonable timeout
+            response = requests.get(url, stream=True, timeout=30)
+            response.raise_for_status()  # Raise exception for HTTP errors
+            
+            # Get file size for progress tracking
+            total_size = int(response.headers.get('content-length', 0))
+            print(f"File size: {total_size/1024/1024:.1f} MB")
+            
+            # Download with progress tracking
+            downloaded = 0
+            start_time = time.time()
+            with open(model_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        # Print progress every 1MB
+                        if downloaded % (1024*1024) < 8192:
+                            elapsed = time.time() - start_time
+                            if elapsed > 0:
+                                speed = downloaded / elapsed / 1024 / 1024
+                                percent = 100 * downloaded / total_size if total_size > 0 else 0
+                                print(f"Downloaded: {downloaded/1024/1024:.1f}MB ({percent:.1f}%) - {speed:.1f} MB/s")
+            
+            # Verify file was downloaded
+            if os.path.exists(model_path) and os.path.getsize(model_path) > 0:
+                print(f"Successfully downloaded model to {model_path}")
+                return True
+            else:
+                print("Download completed but file is empty, trying next URL")
+        except Exception as e:
+            print(f"Error during download from {url}: {e}")
+    
+    # If we get here, all download attempts failed
+    print("All download attempts failed")
+    
+    # Last resort: try using ultralytics to download the model directly
     try:
-        os.makedirs(os.path.dirname(model_path), exist_ok=True)
-        response = requests.get(url, stream=True)
-        with open(model_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        return True
+        print("Attempting to use ultralytics to download the model directly...")
+        # This will download the model to the ultralytics cache directory
+        model = YOLO("yolov8n.pt")
+        
+        # Try to copy the model to our target location
+        import shutil
+        model_files = sorted(Path(os.path.expanduser("~/.cache")).rglob("yolov8n*.pt"))
+        if model_files:
+            shutil.copy(str(model_files[0]), model_path)
+            print(f"Copied model from cache: {model_files[0]} -> {model_path}")
+            return True
     except Exception as e:
-        print(f"Error downloading model: {e}")
-        return False
+        print(f"Failed to use ultralytics to download the model: {e}")
+    
+    return False
 
 class ObjectDetector:
     def __init__(self):
@@ -49,7 +110,15 @@ class ObjectDetector:
         if not os.path.exists(MODEL_PATH):
             model_success = download_model(MODEL_PATH)
             if not model_success:
-                raise RuntimeError(f"Could not download model to {MODEL_PATH}")
+                # Try one last approach - use a model built into ultralytics
+                try:
+                    print("Attempting to use a pre-cached model from ultralytics...")
+                    self.model = YOLO("yolov8n.pt")  # This should trigger a download if needed
+                    print("Successfully loaded model from ultralytics cache")
+                except Exception as e:
+                    print(f"All model loading attempts failed: {e}")
+                    raise RuntimeError(f"Could not download model to {MODEL_PATH}")
+                return
         
         # Modern PyTorch-compatible loading approach
         try:
@@ -65,7 +134,15 @@ class ObjectDetector:
                 self.model = YOLO(MODEL_PATH, task='detect')
             except Exception as inner_e:
                 print(f"Task-specific loading failed: {inner_e}")
-                raise RuntimeError("Could not load YOLOv8 model after multiple attempts")
+                
+                # Last resort - try to use a pre-cached model
+                try:
+                    print("Attempting to use a pre-cached model from ultralytics...")
+                    self.model = YOLO("yolov8n.pt")  # This should trigger a download if needed
+                    print("Successfully loaded model from ultralytics cache")
+                except Exception as final_e:
+                    print(f"Final attempt failed: {final_e}")
+                    raise RuntimeError("Could not load YOLOv8 model after multiple attempts")
         
         self.class_names = COCO_CLASSES
         print(f"Model loaded successfully!")

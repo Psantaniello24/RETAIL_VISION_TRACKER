@@ -33,6 +33,86 @@ st.set_page_config(
     layout="wide"
 )
 
+# Add diagnostic section with toggle
+def show_system_diagnostics():
+    with st.expander("System Diagnostics", expanded=False):
+        st.write("### System Information")
+        
+        # Show Python and package versions
+        st.code(f"""
+Python: {sys.version}
+OpenCV: {cv2.__version__}
+NumPy: {np.__version__}
+Pandas: {pd.__version__}
+        """)
+        
+        # Check for ultralytics and torch
+        try:
+            import torch
+            st.write(f"PyTorch: {torch.__version__}")
+            st.write(f"CUDA Available: {torch.cuda.is_available()}")
+        except ImportError:
+            st.write("PyTorch: Not installed")
+        
+        try:
+            import ultralytics
+            st.write(f"Ultralytics: {ultralytics.__version__}")
+        except ImportError:
+            st.write("Ultralytics: Not installed")
+        
+        # Check directories
+        st.write("### Directories")
+        cur_dir = os.getcwd()
+        st.write(f"Working directory: {cur_dir}")
+        
+        # List key directories
+        for directory in ["reports", "temp_videos"]:
+            if os.path.exists(directory):
+                st.write(f"✅ {directory}/")
+            else:
+                st.write(f"❌ {directory}/ (missing)")
+        
+        # Check for model files
+        st.write("### Model Files")
+        # Check current directory
+        model_files = [f for f in os.listdir('.') if f.endswith('.pt')]
+        if model_files:
+            for model in model_files:
+                size_mb = os.path.getsize(model) / (1024*1024)
+                st.write(f"✅ {model} ({size_mb:.1f} MB)")
+        else:
+            st.write("❌ No model files found in current directory")
+        
+        # Also check home cache
+        try:
+            cache_dir = os.path.expanduser("~/.cache")
+            if os.path.exists(cache_dir):
+                import glob
+                cache_models = list(glob.glob(f"{cache_dir}/**/*yolo*.pt", recursive=True))
+                if cache_models:
+                    st.write("Models in cache:")
+                    for cm in cache_models:
+                        size_mb = os.path.getsize(cm) / (1024*1024)
+                        st.write(f"✅ {os.path.basename(cm)} ({size_mb:.1f} MB)")
+        except Exception as e:
+            st.write(f"Error checking cache: {e}")
+            
+        # Add retry button
+        if st.button("Force Download Model"):
+            try:
+                if os.path.exists("yolov8n.pt"):
+                    os.remove("yolov8n.pt")
+                    st.write("Removed existing model file")
+                
+                from detector import download_model
+                success = download_model("yolov8n.pt")
+                if success:
+                    st.success("Model downloaded successfully!")
+                else:
+                    st.error("Failed to download model")
+            except Exception as e:
+                st.error(f"Error during download: {e}")
+
 # Initialize detector and tracker
 @st.cache_resource
 def get_detector():
@@ -85,6 +165,9 @@ def main():
     # Sidebar controls
     with st.sidebar:
         st.header("Input Source")
+        
+        # Add diagnostics section at the top
+        show_system_diagnostics()
         
         # Choose input source
         input_source = st.radio(
