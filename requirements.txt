@@ -1,9 +1,9 @@
-setuptools>=58.0.0
+setuptools>=68.0.0
 wheel
 opencv-python-headless==4.8.0.76
 ultralytics==8.0.157
 streamlit==1.26.0
-numpy==1.24.3
+numpy==1.26.0
 pandas==2.0.3
 requests==2.32.3
 tqdm==4.67.1 
