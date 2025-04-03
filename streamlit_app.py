@@ -259,7 +259,7 @@ def main():
         
         # GitHub link
         st.divider()
-        st.markdown("[GitHub Repository](https://github.com/YOUR_USERNAME/retail-inventory-tracker)")
+        st.markdown("[GitHub Repository](https://github.com/Psantaniello24/RETAIL_VISION_TRACKER/)")
     
     # Load the model and tracker
     try:
