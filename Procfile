@@ -1,1 +1,1 @@
-web: streamlit run streamlit_app.py 
+web: python test_torch.py && python distutils_placeholder.py && streamlit run streamlit_app.py 

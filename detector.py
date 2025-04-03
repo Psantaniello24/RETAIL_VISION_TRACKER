@@ -51,28 +51,31 @@ class ObjectDetector:
             if not model_success:
                 raise RuntimeError(f"Could not download model to {MODEL_PATH}")
         
-        # Try a few approaches to load the model
-        for i in range(3):  # Three attempts
-            try:
-                if i == 0:
-                    # First attempt: simple loading
-                    self.model = YOLO(MODEL_PATH)
-                    break
-                elif i == 1:
-                    # Second attempt: with task specified
-                    self.model = YOLO(MODEL_PATH, task='detect')
-                    break
-                else:
-                    # Third attempt: with weights_only=False
-                    self.model = YOLO(MODEL_PATH, 
-                                    _callbacks={'on_params_update': 
-                                                lambda: torch.load(MODEL_PATH, weights_only=False)})
-                    break
-            except Exception as e:
-                print(f"Loading attempt {i+1} failed: {e}")
-                if i == 2:  # Last attempt
-                    print("All loading attempts failed.")
-                    raise
+        # Modern PyTorch-compatible loading approach
+        try:
+            print("Loading YOLO model with modern PyTorch...")
+            self.model = YOLO(MODEL_PATH)
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            print("Attempting fallback loading methods...")
+            
+            # Try alternate loading methods
+            for i in range(2):
+                try:
+                    if i == 0:
+                        # Specify task
+                        self.model = YOLO(MODEL_PATH, task='detect')
+                        break
+                    else:
+                        # Last resort - try with explicit loading
+                        from ultralytics.engine.model import Model
+                        self.model = Model(MODEL_PATH)
+                        break
+                except Exception as inner_e:
+                    print(f"Fallback attempt {i+1} failed: {inner_e}")
+                    if i == 1:  # Last attempt
+                        print("All loading attempts failed.")
+                        raise RuntimeError("Could not load YOLOv8 model after multiple attempts")
         
         self.class_names = COCO_CLASSES
         print(f"Model loaded successfully!")

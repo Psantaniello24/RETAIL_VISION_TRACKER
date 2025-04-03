@@ -1,29 +1,38 @@
 """
-This file helps ensure distutils compatibility with Python 3.12+
+Support for Python 3.12+ environments
 """
 
-def install_distutils():
+def setup_environment():
     import sys
     import subprocess
+    import os
+    
+    print("Setting up Python environment for deployment...")
     
     try:
-        import distutils
-        print("Distutils is already installed!")
-        return True
-    except ImportError:
-        print("Distutils not found, attempting to install...")
+        # Check and install setuptools
+        subprocess.check_call([
+            sys.executable,
+            "-m", "pip", "install", 
+            "setuptools>=67.0.0",
+            "--upgrade"
+        ])
         
+        # Check torch version
         try:
-            subprocess.check_call([
-                sys.executable,
-                "-m", "pip", "install", 
-                "setuptools>=59.0.0",
-                "--force-reinstall"
-            ])
-            return True
-        except Exception as e:
-            print(f"Failed to install distutils: {e}")
-            return False
+            import torch
+            print(f"PyTorch version: {torch.__version__}")
+        except ImportError:
+            print("PyTorch not installed yet, will be installed from requirements.txt")
+        
+        # Create required directories
+        for directory in ["reports", "temp_videos"]:
+            os.makedirs(directory, exist_ok=True)
+            
+        return True
+    except Exception as e:
+        print(f"Setup warning (non-fatal): {e}")
+        return False
 
 if __name__ == "__main__":
-    install_distutils() 
+    setup_environment() 

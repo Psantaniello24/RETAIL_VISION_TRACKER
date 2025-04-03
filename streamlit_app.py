@@ -1,20 +1,16 @@
 import sys
 import subprocess
 
-# Try to ensure distutils compatibility
+# Setup Python environment for deployment
 try:
-    import distutils
+    from distutils_placeholder import setup_environment
+    setup_environment()
 except ImportError:
-    print("Attempting to install distutils compatibility...")
-    try:
-        subprocess.check_call([
-            sys.executable,
-            "-m", "pip", "install", 
-            "setuptools>=59.0.0",
-            "--force-reinstall"
-        ])
-    except Exception as e:
-        print(f"Warning: Failed to install distutils: {e}")
+    print("Setting up basic environment...")
+    # Create required directories
+    import os
+    for directory in ["reports", "temp_videos"]:
+        os.makedirs(directory, exist_ok=True)
 
 # Now import the rest of the modules
 import cv2
@@ -79,10 +75,6 @@ def download_video(video_url):
 
 # Global variables
 last_report_time = datetime.now()
-
-# Create required directories
-for directory in ["reports", "temp_videos"]:
-    os.makedirs(directory, exist_ok=True)
 
 # UI Components
 def main():
