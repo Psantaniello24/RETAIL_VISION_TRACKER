@@ -53,13 +53,5 @@ Edit the `config.py` file to adjust:
 - Low stock alert levels
 - Video file path
 
-## Cloud Deployment
-This application can be deployed to Streamlit Cloud:
-
-1. Create a GitHub repository and push the code
-2. Connect to Streamlit Cloud (https://streamlit.io/cloud)
-3. Select your repository and branch
-4. Set the main file path to: `streamlit_app.py`
-
 ## PyTorch 2.6 Compatibility
 If you encounter model loading issues with PyTorch 2.6, the application includes a fallback mechanism that handles these errors automatically. 
